@@ -1,26 +1,38 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* =============================================================
+   SeJo Labs brand — near-black + gold + cream.
+   Display: Anton.  Serif accents: Cormorant.  Body: system sans.
+   ============================================================= */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: #0a0a0b;
+  --color-ink-soft: #16151a;
+  --color-gold: #c9a227;
+  --color-gold-bright: #e7c75a;
+  --color-cream: #f5efe0;
+
+  --color-background: var(--color-ink);
+  --color-foreground: var(--color-cream);
+
+  --font-display: var(--font-anton);
+  --font-serif: var(--font-cormorant);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ink);
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* subtle warm radial glow behind the hero */
+.brand-glow {
+  background:
+    radial-gradient(60% 50% at 50% 0%, rgba(201, 162, 39, 0.14), transparent 70%),
+    radial-gradient(40% 30% at 80% 10%, rgba(231, 199, 90, 0.08), transparent 70%);
 }

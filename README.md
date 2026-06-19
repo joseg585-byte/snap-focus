@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SnapFocus
 
-## Getting Started
+**Focus, verified.** An AI-powered app by **SeJo Labs** for parents and individuals.
+Built as a mobile-first Next.js web app, structured to wrap into a native iOS app
+(Capacitor) later.
 
-First, run the development server:
+Three AI tools, all gated behind an internal **credit balance** for margin protection:
+
+| Tool | What it does | Cost |
+| --- | --- | --- |
+| **Room Check** | Computer-vision check that a room is actually clean | 1 credit |
+| **Standard Tutor** | Generative customized lesson plans | 2 credits |
+| **Master Focus Coach** | Flagship focus coaching (Ultimate only) | 20 credits |
+
+**Tiers:** Starter $4.99 / 500cr · Pro $9.99 / 1,000cr · Ultimate $19.99 / 1,500cr
+**Top-ups:** Quick Fix $2.99 / 100cr · Value Pack $4.99 / 250cr · Power Pack $9.99 / 1,000cr
+
+## Stack
+
+- **Next.js 16** (App Router, Server Components) + **React 19** + **TypeScript**
+- **Tailwind CSS v4**, hand-rolled shadcn-style UI primitives
+- **Supabase** (Postgres + Auth, email/Google/Apple) — schema in `supabase/migrations/0001_init.sql`
+- **Stripe** behind an abstract `BillingService` (Apple IAP / RevenueCat swap in later)
+- **Vercel AI SDK** routing to OpenAI / Anthropic
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # → http://localhost:3000
+npm run build        # production build (exits 0)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The landing page renders with **no env vars**. To enable auth / billing / AI,
+copy `.env.example` → `.env.local` and fill in keys.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+supabase/migrations/0001_init.sql   Full schema: profiles, tier_config, credit ledger,
+                                    purchases, lesson_plans, room_checks + atomic
+                                    spend/grant functions + RLS + signup trigger
+src/lib/config.ts                   Single source of truth: tiers, packs, credit costs
+src/lib/credits/                    Server-only spend/grant wrappers (call the RPCs)
+src/lib/billing/                    Abstract BillingService + Stripe stub + factory
+src/lib/supabase/                   Browser + server (+ service-role) clients
+src/lib/ai/                         Action→model routing + system prompts
+src/app/api/{room-check,tutor,master-coach}/   Route stubs; enforce the hard credit stop
+src/components/ui/                   Button / Card / Badge primitives
+src/app/page.tsx                    Mobile-first landing (SeJo brand)
+```
 
-## Learn More
+## Credit safety
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Credit math never runs client-side. The `spend_credits` Postgres function locks the
+profile row (`for update`), enforces a hard stop, and writes an append-only ledger
+entry — so concurrent requests can't double-spend or go negative.
