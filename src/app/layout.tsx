@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Anton, Cormorant } from "next/font/google";
+import { SiteHeader } from "@/components/nav/site-header";
 import "./globals.css";
 
 const anton = Anton({
@@ -30,7 +31,10 @@ export default function RootLayout({
       lang="en"
       className={`${anton.variable} ${cormorant.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-ink text-cream">{children}</body>
+      <body className="min-h-full flex flex-col bg-ink text-cream">
+        <SiteHeader />
+        {children}
+      </body>
     </html>
   );
 }

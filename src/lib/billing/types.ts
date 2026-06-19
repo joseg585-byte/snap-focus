@@ -34,9 +34,18 @@ export interface TopupCheckoutParams {
 
 /** Normalized webhook outcome the credit layer can act on. */
 export type BillingEvent =
-  | { type: "subscription_activated"; userId: string; tier: TierId; eventId: string }
+  | {
+      type: "subscription_activated";
+      userId: string;
+      tier: TierId;
+      eventId: string;
+      customerId?: string;
+      subscriptionId?: string;
+    }
   | { type: "subscription_canceled"; userId: string; eventId: string }
   | { type: "topup_purchased"; userId: string; pack: TopupId; credits: number; eventId: string }
+  /** Monthly renewal invoice paid — refill the tier's monthly credit allotment. */
+  | { type: "invoice_paid"; userId: string; tier: TierId; eventId: string }
   | { type: "ignored"; eventId: string };
 
 export interface BillingService {

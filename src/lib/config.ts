@@ -8,6 +8,7 @@
 export type AiAction = "room_check" | "standard_tutor" | "master_coach";
 export type TierId = "starter" | "pro" | "ultimate";
 export type TopupId = "quick_fix" | "value_pack" | "power_pack";
+export type RoomCheckLevel = "quick" | "standard" | "deep";
 
 /** Credit cost per AI action. Authoritative copy lives in `spend_credits()`. */
 export const CREDIT_COSTS: Record<AiAction, number> = {
@@ -15,6 +16,70 @@ export const CREDIT_COSTS: Record<AiAction, number> = {
   standard_tutor: 2,
   master_coach: 20,
 };
+
+export interface RoomCheckLevelConfig {
+  id: RoomCheckLevel;
+  name: string;
+  cost: number;
+  emoji: string;
+  tagline: string;
+  description: string;
+  photoCount: number;
+  steps: { title: string; prompt: string }[];
+}
+
+/** Per-level cost overrides `spend_credits(p_cost_override=...)`. */
+export const ROOM_CHECK_LEVELS: RoomCheckLevelConfig[] = [
+  {
+    id: "quick",
+    name: "Quick Check",
+    cost: 1,
+    emoji: "🟢",
+    tagline: "Snap one photo. AI confirms if it looks clean.",
+    description: "One photo, one verdict. The fastest way to get the all-clear.",
+    photoCount: 1,
+    steps: [{ title: "Room photo", prompt: "Take one photo of the room." }],
+  },
+  {
+    id: "standard",
+    name: "Standard Check",
+    cost: 2,
+    emoji: "🟡",
+    tagline: "Take 3 guided photos. AI verifies each angle.",
+    description: "Three angles, checked individually and as a whole room.",
+    photoCount: 3,
+    steps: [
+      { title: "Full room view", prompt: "Full room view from the doorway." },
+      { title: "Desk & surfaces", prompt: "Desk, dresser, and surfaces." },
+      { title: "Closet & storage", prompt: "Closet and storage areas." },
+    ],
+  },
+  {
+    id: "deep",
+    name: "Deep Inspection",
+    cost: 3,
+    emoji: "🔴",
+    tagline:
+      "Guided multi-step inspection. AI checks under the bed, closet, behind furniture. Strictest verification.",
+    description: "Four angles including the spots that usually get skipped.",
+    photoCount: 4,
+    steps: [
+      { title: "Full room view", prompt: "Full room view from the doorway." },
+      { title: "Under the bed", prompt: "Get low — show under the bed." },
+      { title: "Inside the closet", prompt: "Open the closet — show inside." },
+      {
+        title: "Trash & behind furniture",
+        prompt: "Trash can, plus behind furniture or other commonly-skipped spots.",
+      },
+    ],
+  },
+];
+
+export function roomCheckLevelConfig(level: RoomCheckLevel): RoomCheckLevelConfig {
+  const cfg = ROOM_CHECK_LEVELS.find((l) => l.id === level);
+  if (!cfg) throw new Error(`Unknown room check level: ${level}`);
+  return cfg;
+}
 
 export interface Tier {
   id: TierId;

@@ -23,18 +23,20 @@ export class InsufficientCreditsError extends Error {
 export async function spendCredits(
   userId: string,
   action: AiAction,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  costOverride?: number
 ): Promise<number> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("spend_credits", {
     p_user_id: userId,
     p_action: action,
     p_idem_key: idempotencyKey ?? null,
+    p_cost_override: costOverride ?? null,
   });
 
   if (error) {
     if (error.message?.includes("insufficient_credits")) {
-      throw new InsufficientCreditsError(action, CREDIT_COSTS[action]);
+      throw new InsufficientCreditsError(action, costOverride ?? CREDIT_COSTS[action]);
     }
     throw error;
   }
