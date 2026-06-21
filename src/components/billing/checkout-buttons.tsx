@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TIERS, TOPUP_PACKS, dollars, type TierId, type TopupId } from "@/lib/config";
+import { TOOL_CREDIT_COSTS } from "@/lib/credits/costs";
 
 export function CheckoutButtons({ currentTier }: { currentTier: TierId }) {
   const [loading, setLoading] = useState<string | null>(null);
@@ -61,6 +62,12 @@ export function CheckoutButtons({ currentTier }: { currentTier: TierId }) {
                     </span>
                     <span className="text-cream/50">/mo</span>
                   </div>
+                  <p className="text-sm text-cream/60">{tier.monthlyCredits.toLocaleString()} credits / month</p>
+                  <p className="text-xs text-cream/40">
+                    ~{Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.standard_tutor_interactive)} interactive
+                    lessons OR {Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.master_coach_coached)} coached
+                    study sessions per month
+                  </p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-end">
                   <Button

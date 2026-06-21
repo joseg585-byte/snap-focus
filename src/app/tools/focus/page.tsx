@@ -17,8 +17,8 @@ export default async function FocusPage() {
         <Card className="mt-8">
           <p className="text-cream">Ultimate tier required.</p>
           <p className="mt-2 text-sm text-cream/60">
-            The flagship AI-coached focus session is exclusive to the Ultimate plan — 20
-            credits per session, unlimited check-ins, and a closing reflection.
+            The flagship AI-coached focus session is exclusive to the Ultimate plan — 10
+            credits for a Coached subject session, or 5 credits for Just Focus.
           </p>
           <Link
             href="/billing"
@@ -36,7 +36,10 @@ export default async function FocusPage() {
       <h1 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
         🧠 Master Focus Coach
       </h1>
-      <p className="mt-2 text-cream/60">20 credits per session. AI checks in every 5 minutes.</p>
+      <p className="mt-2 text-cream/60">
+        10 credits for a Coached study session (AI builds a plan and teaches), or 5 credits for Just Focus
+        (Pomodoro timer with check-ins).
+      </p>
       <div className="mt-8">
         <FocusSessionFlow />
       </div>
