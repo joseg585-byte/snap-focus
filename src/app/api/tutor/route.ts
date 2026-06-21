@@ -1,9 +1,10 @@
-// POST /api/tutor — customized lesson plan / quiz / study guide. Costs 2
-// credits. Auto-saves the generation to lesson_plans so the credits spent
-// are never lost even if the user never clicks "Save to My Library".
+// POST /api/tutor — generates a graded practice lesson (3-7 questions, each
+// with its own correct answer + solution path). Costs 12 credits, charged on
+// generation — that covers all grading + retries for this lesson, so
+// /api/tutor/grade never spends credits itself.
 import { NextResponse } from "next/server";
 import { guardAndSpend } from "../_lib/guard";
-import { generateForAction } from "@/lib/ai";
+import { generateTutorLesson } from "@/lib/ai";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CREDIT_COSTS } from "@/lib/config";
 
@@ -42,14 +43,18 @@ export async function POST(req: Request) {
     `Goal: ${goalLabel}`,
     notes ? `Special needs / notes: ${notes}` : null,
     "",
-    "Produce a well-structured markdown document matching the goal above.",
+    "Generate the practice question set described in the system prompt.",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const result = await generateForAction("standard_tutor", prompt);
+  const result = await generateTutorLesson(prompt);
 
   const title = `${topic} — ${subject} (${gradeLevel})`;
+  const content = result.questions
+    .map((q, i) => `${i + 1}. ${q.prompt}`)
+    .join("\n\n");
+
   const supabase = await createSupabaseServerClient();
   const { data: saved, error: insertError } = await supabase
     .from("lesson_plans")
@@ -57,7 +62,8 @@ export async function POST(req: Request) {
       user_id: guard.userId,
       action: "standard_tutor",
       title,
-      content: result.text,
+      content,
+      questions: result.questions,
       model_used: result.model,
       credits_spent: CREDIT_COSTS.standard_tutor,
       metadata: { subject, gradeLevel, goal, notes: notes ?? null },
@@ -65,12 +71,19 @@ export async function POST(req: Request) {
     .select("id")
     .single();
 
+  if (insertError || !saved) {
+    return NextResponse.json(
+      { error: "save_failed", message: insertError?.message, balance: guard.balance },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     balance: guard.balance,
     model: result.model,
-    plan: result.text,
+    lessonId: saved.id,
     title,
-    savedId: insertError ? null : saved?.id ?? null,
+    questions: result.questions.map((q) => ({ prompt: q.prompt })),
   });
 }

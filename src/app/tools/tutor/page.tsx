@@ -7,7 +7,8 @@ export default function TutorPage() {
         Standard Tutor
       </h1>
       <p className="mt-2 text-cream/60">
-        Generate a customized lesson plan, quiz, or study guide. 2 credits.
+        Generate a graded practice set tailored to your kid, subject, and grade level — 12 credits,
+        covers grading and retries.
       </p>
       <div className="mt-8">
         <TutorFlow />
