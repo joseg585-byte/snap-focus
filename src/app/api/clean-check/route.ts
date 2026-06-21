@@ -1,15 +1,16 @@
-// POST /api/room-check — vision-verified room check. Cost depends on level
-// (quick=1, standard=2, deep=3 credits), enforced server-side regardless of
+// POST /api/clean-check — vision-verified area check. Cost depends on level
+// (quick=1, standard=3, deep=6 credits), enforced server-side regardless of
 // what the client claims.
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { guardAndSpend } from "../_lib/guard";
-import { generateRoomCheckVerdict, type RoomCheckImage } from "@/lib/ai";
+import { generateCleanCheckVerdict, type CleanCheckImage } from "@/lib/ai";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { roomCheckLevelConfig, type RoomCheckLevel } from "@/lib/config";
+import { cleanCheckLevelConfig, cleanCheckSteps, type CleanCheckLevel } from "@/lib/config";
 
-interface RoomCheckRequestBody {
-  level?: RoomCheckLevel;
+interface CleanCheckRequestBody {
+  level?: CleanCheckLevel;
+  area?: string; // free-text area label, e.g. "Bedroom" or a custom "Other" value
   photos?: string[]; // data: URLs, one per wizard step, in order
   idempotencyKey?: string;
 }
@@ -21,14 +22,18 @@ function parseDataUrl(dataUrl: string): { base64: string; mediaType: string } | 
 }
 
 export async function POST(req: Request) {
-  const body: RoomCheckRequestBody = await req.json().catch(() => ({}));
-  const { level, photos, idempotencyKey } = body;
+  const body: CleanCheckRequestBody = await req.json().catch(() => ({}));
+  const { level, area, photos, idempotencyKey } = body;
 
   if (!level || !["quick", "standard", "deep"].includes(level)) {
     return NextResponse.json({ error: "invalid_level" }, { status: 400 });
   }
+  if (!area || !area.trim()) {
+    return NextResponse.json({ error: "missing_area" }, { status: 400 });
+  }
 
-  const config = roomCheckLevelConfig(level);
+  const config = cleanCheckLevelConfig(level);
+  const steps = cleanCheckSteps(level, area);
 
   if (!Array.isArray(photos) || photos.length !== config.photoCount) {
     return NextResponse.json(
@@ -42,18 +47,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_photo_data" }, { status: 400 });
   }
 
-  const guard = await guardAndSpend("room_check", idempotencyKey, config.cost);
+  const guard = await guardAndSpend("clean_check", idempotencyKey, config.cost);
   if (guard instanceof NextResponse) return guard;
 
-  const images: RoomCheckImage[] = parsed.map((p, i) => ({
+  const images: CleanCheckImage[] = parsed.map((p, i) => ({
     base64: p!.base64,
     mediaType: p!.mediaType,
-    areaTitle: config.steps[i].title,
+    areaTitle: steps[i].title,
   }));
 
   let verdict;
   try {
-    verdict = await generateRoomCheckVerdict({ level, images });
+    verdict = await generateCleanCheckVerdict({ level, area, images });
   } catch (err) {
     return NextResponse.json(
       {
@@ -65,14 +70,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const roomCheckId = randomUUID();
+  const cleanCheckId = randomUUID();
   const supabase = await createSupabaseServerClient();
 
   const storagePaths: string[] = [];
   for (let i = 0; i < parsed.length; i++) {
     const { base64, mediaType } = parsed[i]!;
     const ext = mediaType.split("/")[1] || "jpg";
-    const path = `${guard.userId}/${roomCheckId}/${i}.${ext}`;
+    const path = `${guard.userId}/${cleanCheckId}/${i}.${ext}`;
     const { error: uploadError } = await supabase.storage
       .from("room-checks")
       .upload(path, Buffer.from(base64, "base64"), { contentType: mediaType });
@@ -80,9 +85,10 @@ export async function POST(req: Request) {
   }
 
   const { error: insertError } = await supabase.from("room_checks").insert({
-    id: roomCheckId,
+    id: cleanCheckId,
     user_id: guard.userId,
     level,
+    area,
     storage_paths: storagePaths,
     area_results: verdict.areas,
     overall_pass: verdict.overallPass,
@@ -100,10 +106,11 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    id: roomCheckId,
+    id: cleanCheckId,
     balance: guard.balance,
     model: verdict.model,
     level,
+    area,
     overallPass: verdict.overallPass,
     summary: verdict.summary,
     areas: verdict.areas,

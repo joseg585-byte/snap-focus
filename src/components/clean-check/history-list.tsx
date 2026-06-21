@@ -4,9 +4,10 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export interface RoomCheckHistoryItem {
+export interface CleanCheckHistoryItem {
   id: string;
   level: string;
+  area: string;
   overallPass: boolean | null;
   summary: string | null;
   areas: { title: string; pass: boolean; note: string }[];
@@ -15,11 +16,11 @@ export interface RoomCheckHistoryItem {
   photoUrls: string[];
 }
 
-export function RoomCheckHistoryList({ items }: { items: RoomCheckHistoryItem[] }) {
+export function CleanCheckHistoryList({ items }: { items: CleanCheckHistoryItem[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (items.length === 0) {
-    return <p className="mt-6 text-cream/60">No room checks yet.</p>;
+    return <p className="mt-6 text-cream/60">No clean checks yet.</p>;
   }
 
   return (
@@ -31,7 +32,7 @@ export function RoomCheckHistoryList({ items }: { items: RoomCheckHistoryItem[] 
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-semibold capitalize text-cream">
-                  {item.overallPass ? "✓" : "✗"} {item.level} check
+                  {item.overallPass ? "✓" : "✗"} {item.area} · {item.level} check
                 </p>
                 <p className="text-sm text-cream/50">
                   {new Date(item.createdAt).toLocaleString()}

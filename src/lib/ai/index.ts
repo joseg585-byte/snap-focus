@@ -1,21 +1,23 @@
 // =============================================================
 // AI routing layer (Vercel AI SDK).
 // Maps each action to a model class per tier policy:
-//   - budget models for Room Check / Standard Tutor
-//   - a flagship model for the Master Focus Coach (Ultimate only)
+//   - budget models for the 3 kid tools (Clean Check / Homework Check / Study Quiz)
+//   - a flagship model for the (demoted) adult Master Study Coach
 // Model ids are read from env so they can be tuned without code changes.
 // =============================================================
 import "server-only";
 import { generateText, generateObject, streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import type { AiAction, RoomCheckLevel } from "@/lib/config";
+import type { AiAction, CleanCheckLevel } from "@/lib/config";
 import {
   PROMPTS,
-  ROOM_CHECK_PROMPT,
-  ROOM_CHECK_STRICTNESS,
-  STANDARD_TUTOR_PROMPT,
-  TUTOR_GRADE_PROMPT,
+  CLEAN_CHECK_PROMPT,
+  CLEAN_CHECK_STRICTNESS,
+  CLEAN_CHECK_AREA_GUIDANCE,
+  HOMEWORK_CHECK_PROMPT,
+  STUDY_QUIZ_GENERATE_PROMPT,
+  STUDY_QUIZ_GRADE_PROMPT,
   MASTER_COACH_PLAN_PROMPT,
   MASTER_COACH_TEACH_PROMPT,
   MASTER_COACH_REPORT_PROMPT,
@@ -24,8 +26,9 @@ import {
 export type ModelClass = "budget" | "flagship";
 
 export const ACTION_MODEL_CLASS: Record<AiAction, ModelClass> = {
-  room_check: "budget",
-  standard_tutor: "budget",
+  clean_check: "budget",
+  homework_check: "budget",
+  study_quiz: "budget",
   master_coach: "flagship",
 };
 
@@ -47,9 +50,9 @@ function hasProvider(): boolean {
 }
 
 /**
- * Text generation for Standard Tutor and the Master Focus Coach's plan /
- * reflection copy. Falls back to a deterministic stub when no provider key
- * is configured, so routes stay testable without live credentials.
+ * Generic text generation, currently only used for the Master Focus Coach's
+ * "Just Focus" kickoff message. Falls back to a deterministic stub when no
+ * provider key is configured, so routes stay testable without live creds.
  */
 export async function generateForAction(
   action: AiAction,
@@ -91,10 +94,10 @@ export function streamCoachMessage(prompt: string): { toTextStreamResponse(): Re
 }
 
 // =============================================================
-// Room Check vision verdicts
+// Clean Check vision verdicts (renamed from Room Check, area-aware)
 // =============================================================
 
-export const RoomCheckVerdictSchema = z.object({
+export const CleanCheckVerdictSchema = z.object({
   areas: z.array(
     z.object({
       title: z.string().describe("Which photographed area this verdict covers"),
@@ -106,9 +109,9 @@ export const RoomCheckVerdictSchema = z.object({
   summary: z.string().describe("1-2 sentence overall verdict"),
 });
 
-export type RoomCheckVerdict = z.infer<typeof RoomCheckVerdictSchema>;
+export type CleanCheckVerdict = z.infer<typeof CleanCheckVerdictSchema>;
 
-export interface RoomCheckImage {
+export interface CleanCheckImage {
   /** Base64-encoded image bytes, no `data:` URL prefix. */
   base64: string;
   mediaType: string;
@@ -116,15 +119,17 @@ export interface RoomCheckImage {
 }
 
 /**
- * Send 1-4 room photos to Claude vision in a single message and get back a
- * structured per-area + overall verdict. Falls back to an honest stub
- * (never a fake "pass") when no provider key is configured.
+ * Send 1-4 photos of a declared area (bedroom, closet, desk, etc.) to Claude
+ * vision in a single message and get back a structured per-photo + overall
+ * verdict. Falls back to an honest stub (never a fake "pass") when no
+ * provider key is configured.
  */
-export async function generateRoomCheckVerdict(params: {
-  level: RoomCheckLevel;
-  images: RoomCheckImage[];
-}): Promise<RoomCheckVerdict & { model: string }> {
-  const model = modelIdFor("room_check");
+export async function generateCleanCheckVerdict(params: {
+  level: CleanCheckLevel;
+  area: string;
+  images: CleanCheckImage[];
+}): Promise<CleanCheckVerdict & { model: string }> {
+  const model = modelIdFor("clean_check");
 
   if (!hasProvider()) {
     return {
@@ -139,18 +144,20 @@ export async function generateRoomCheckVerdict(params: {
     };
   }
 
-  const instructions = `${ROOM_CHECK_PROMPT}\n\n${ROOM_CHECK_STRICTNESS[params.level]}\n\nThere are ${params.images.length} photo(s) below, each preceded by a text label naming its area. Return exactly ${params.images.length} entries in "areas", in the same order as the labels, using each label as the "title".`;
+  const areaGuidance =
+    CLEAN_CHECK_AREA_GUIDANCE[params.area.toLowerCase()] ?? CLEAN_CHECK_AREA_GUIDANCE.other;
+  const instructions = `${CLEAN_CHECK_PROMPT}\n\nArea being checked: ${params.area}. ${areaGuidance}\n\n${CLEAN_CHECK_STRICTNESS[params.level]}\n\nThere are ${params.images.length} photo(s) below, each preceded by a text label naming its shot. Return exactly ${params.images.length} entries in "areas", in the same order as the labels, using each label as the "title".`;
 
   const { object } = await generateObject({
     model: anthropic(model),
-    schema: RoomCheckVerdictSchema,
+    schema: CleanCheckVerdictSchema,
     messages: [
       {
         role: "user",
         content: [
           { type: "text", text: instructions },
           ...params.images.flatMap((img) => [
-            { type: "text" as const, text: `Area: ${img.areaTitle}` },
+            { type: "text" as const, text: `Shot: ${img.areaTitle}` },
             { type: "image" as const, image: img.base64, mediaType: img.mediaType },
           ]),
         ],
@@ -162,94 +169,157 @@ export async function generateRoomCheckVerdict(params: {
 }
 
 // =============================================================
-// Standard Tutor — structured questions + grading
+// Homework Check — verify it's homework, complete, and spot-check accuracy
 // =============================================================
 
-const TutorQuestionSchema = z.object({
-  prompt: z.string().describe("The question text shown to the student"),
-  correct_answer: z.string().describe("The single correct final answer"),
-  solution_path: z.string().describe("Teacher-quality step-by-step solution a grader can check shown work against"),
+export const HomeworkCheckVerdictSchema = z.object({
+  verdict: z.enum(["pass", "fail", "not_homework"]),
+  feedback: z.string().describe("Short, kind, specific feedback readable by a kid"),
+  issues: z
+    .array(
+      z.object({
+        question_ref: z.string().describe("Which question/problem this issue refers to"),
+        issue: z.string().describe("What looks off about it"),
+      })
+    )
+    .default([]),
 });
 
-export type TutorQuestion = z.infer<typeof TutorQuestionSchema>;
+export type HomeworkCheckVerdict = z.infer<typeof HomeworkCheckVerdictSchema>;
 
-const TutorLessonSchema = z.object({
-  questions: z.array(TutorQuestionSchema).min(3).max(7),
-});
+export interface HomeworkCheckImage {
+  base64: string;
+  mediaType: string;
+}
 
-/**
- * Generate 3-7 graded practice questions for a lesson. Each question carries
- * its own correct answer + solution path so /api/tutor/grade never has to
- * call the model just to know what "right" looks like.
- */
-export async function generateTutorLesson(
-  prompt: string
-): Promise<{ questions: TutorQuestion[]; model: string }> {
-  const model = modelIdFor("standard_tutor");
+/** Send one homework photo to Claude vision and get back a verdict. */
+export async function generateHomeworkVerdict(params: {
+  image: HomeworkCheckImage;
+}): Promise<HomeworkCheckVerdict & { model: string }> {
+  const model = modelIdFor("homework_check");
+
   if (!hasProvider()) {
     return {
       model,
-      questions: [
-        {
-          prompt: "[stub] AI not configured. Set ANTHROPIC_API_KEY to enable real lesson generation.",
-          correct_answer: "N/A",
-          solution_path: "N/A",
-        },
-      ],
+      verdict: "fail",
+      feedback: "AI not configured — set ANTHROPIC_API_KEY to enable real verification.",
+      issues: [],
     };
   }
+
   const { object } = await generateObject({
     model: anthropic(model),
-    schema: TutorLessonSchema,
-    system: STANDARD_TUTOR_PROMPT,
+    schema: HomeworkCheckVerdictSchema,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: HOMEWORK_CHECK_PROMPT },
+          { type: "image" as const, image: params.image.base64, mediaType: params.image.mediaType },
+        ],
+      },
+    ],
+  });
+
+  return { ...object, model };
+}
+
+// =============================================================
+// Study Quiz — generate a 5-question verification quiz + grade it
+// =============================================================
+
+const StudyQuizQuestionSchema = z.object({
+  prompt: z.string().describe("The question text shown to the student"),
+  correct_answer: z.string().describe("The single correct final answer"),
+  topic_tag: z.string().describe("Short name of the specific concept this question tests"),
+});
+
+export type StudyQuizQuestion = z.infer<typeof StudyQuizQuestionSchema>;
+
+const StudyQuizSchema = z.object({
+  questions: z.array(StudyQuizQuestionSchema).length(5),
+});
+
+/** Generate the 5-question verification quiz for a subject/topic. */
+export async function generateStudyQuiz(params: {
+  subject: string;
+  topic?: string;
+}): Promise<{ questions: StudyQuizQuestion[]; model: string }> {
+  const model = modelIdFor("study_quiz");
+  if (!hasProvider()) {
+    return {
+      model,
+      questions: Array.from({ length: 5 }, (_, i) => ({
+        prompt: `[stub ${i + 1}] AI not configured. Set ANTHROPIC_API_KEY to enable real quiz generation.`,
+        correct_answer: "N/A",
+        topic_tag: "N/A",
+      })),
+    };
+  }
+
+  const prompt = [`Subject: ${params.subject}`, params.topic ? `Topic: ${params.topic}` : null]
+    .filter(Boolean)
+    .join("\n");
+
+  const { object } = await generateObject({
+    model: anthropic(model),
+    schema: StudyQuizSchema,
+    system: STUDY_QUIZ_GENERATE_PROMPT,
     prompt,
   });
   return { questions: object.questions, model };
 }
 
-const GradeResultSchema = z.object({
-  correct: z.boolean(),
-  feedback: z.string().describe("Short, kind, specific feedback readable by a kid"),
+const StudyQuizGradeResultSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        correct: z.boolean(),
+        feedback: z.string().describe("Short, kind, specific feedback readable by a kid"),
+      })
+    )
+    .describe("Same order as the submitted questions"),
 });
 
-export type GradeResult = z.infer<typeof GradeResultSchema>;
+export type StudyQuizGradeResult = z.infer<typeof StudyQuizGradeResultSchema>["results"];
 
-/** Grade a student's shown work + answer against the stored solution. */
-export async function gradeTutorAnswer(params: {
-  question: string;
-  correctAnswer: string;
-  solutionPath: string;
-  workShown: string;
-  answer: string;
-}): Promise<GradeResult & { model: string }> {
-  const model = modelIdFor("standard_tutor");
+/** Grade all 5 quiz answers in a single call. */
+export async function gradeStudyQuiz(params: {
+  subject: string;
+  questions: StudyQuizQuestion[];
+  answers: string[];
+}): Promise<{ results: StudyQuizGradeResult; model: string }> {
+  const model = modelIdFor("study_quiz");
   if (!hasProvider()) {
     return {
       model,
-      correct: false,
-      feedback: "[stub] AI not configured — set ANTHROPIC_API_KEY to enable real grading.",
+      results: params.questions.map(() => ({
+        correct: false,
+        feedback: "[stub] AI not configured — set ANTHROPIC_API_KEY to enable real grading.",
+      })),
     };
   }
 
   const prompt = [
-    `Question: ${params.question}`,
-    `Correct answer: ${params.correctAnswer}`,
-    `Solution path: ${params.solutionPath}`,
-    `Student's shown work: ${params.workShown || "(none provided)"}`,
-    `Student's answer: ${params.answer}`,
+    `Subject: ${params.subject}`,
+    "",
+    ...params.questions.map(
+      (q, i) =>
+        `Q${i + 1}: ${q.prompt}\nCorrect answer: ${q.correct_answer}\nTopic: ${q.topic_tag}\nStudent's answer: ${params.answers[i] ?? "(no answer)"}`
+    ),
   ].join("\n\n");
 
   const { object } = await generateObject({
     model: anthropic(model),
-    schema: GradeResultSchema,
-    system: TUTOR_GRADE_PROMPT,
+    schema: StudyQuizGradeResultSchema,
+    system: STUDY_QUIZ_GRADE_PROMPT,
     prompt,
   });
-  return { ...object, model };
+  return { results: object.results, model };
 }
 
 // =============================================================
-// Master Focus Coach — coached subject study sessions
+// Master Focus Coach — coached subject study sessions (demoted, unchanged)
 // =============================================================
 
 const SessionBlockSchema = z.object({

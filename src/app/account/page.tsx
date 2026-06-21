@@ -7,9 +7,10 @@ import { Card } from "@/components/ui/card";
 const REASON_LABEL: Record<string, string> = {
   monthly_grant: "Monthly refill",
   topup_purchase: "Top-up purchase",
-  room_check: "Room Check",
-  standard_tutor: "Standard Tutor",
-  master_coach: "Master Focus Coach",
+  clean_check: "Clean Check",
+  homework_check: "Homework Check",
+  study_quiz: "Study Quiz",
+  master_coach: "Adult Study Coach",
   admin_adjustment: "Adjustment",
   refund: "Refund",
 };

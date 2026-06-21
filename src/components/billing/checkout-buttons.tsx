@@ -64,9 +64,9 @@ export function CheckoutButtons({ currentTier }: { currentTier: TierId }) {
                   </div>
                   <p className="text-sm text-cream/60">{tier.monthlyCredits.toLocaleString()} credits / month</p>
                   <p className="text-xs text-cream/40">
-                    ~{Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.standard_tutor_interactive)} interactive
-                    lessons OR {Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.master_coach_coached)} coached
-                    study sessions per month
+                    ~{Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.study_quiz)} study quizzes OR{" "}
+                    {Math.floor(tier.monthlyCredits / TOOL_CREDIT_COSTS.master_coach_coached)} coached adult
+                    sessions per month
                   </p>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-end">

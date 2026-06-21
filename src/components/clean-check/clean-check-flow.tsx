@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ROOM_CHECK_LEVELS, type RoomCheckLevel } from "@/lib/config";
+import { CLEAN_CHECK_LEVELS, CLEAN_CHECK_AREAS, cleanCheckSteps, type CleanCheckLevel } from "@/lib/config";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,17 +13,18 @@ interface AreaVerdict {
   note: string;
 }
 
-interface RoomCheckResult {
+interface CleanCheckResult {
   ok: true;
   id: string;
   balance: number;
-  level: RoomCheckLevel;
+  level: CleanCheckLevel;
+  area: string;
   overallPass: boolean;
   summary: string;
   areas: AreaVerdict[];
 }
 
-type Phase = "pick" | "wizard" | "submitting" | "result";
+type Phase = "area" | "pick" | "wizard" | "submitting" | "result";
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -34,17 +35,25 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export function RoomCheckFlow() {
-  const [phase, setPhase] = useState<Phase>("pick");
-  const [level, setLevel] = useState<RoomCheckLevel | null>(null);
+export function CleanCheckFlow() {
+  const [phase, setPhase] = useState<Phase>("area");
+  const [area, setArea] = useState<string | null>(null);
+  const [customArea, setCustomArea] = useState("");
+  const [level, setLevel] = useState<CleanCheckLevel | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [result, setResult] = useState<RoomCheckResult | null>(null);
+  const [result, setResult] = useState<CleanCheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const config = level ? ROOM_CHECK_LEVELS.find((l) => l.id === level)! : null;
+  const config = level ? CLEAN_CHECK_LEVELS.find((l) => l.id === level)! : null;
+  const steps = level && area ? cleanCheckSteps(level, area) : [];
 
-  function startLevel(l: RoomCheckLevel) {
+  function pickArea(id: string, label: string) {
+    setArea(id === "other" ? customArea || "area" : label);
+    setPhase("pick");
+  }
+
+  function startLevel(l: CleanCheckLevel) {
     setLevel(l);
     setStepIndex(0);
     setPhotos([]);
@@ -54,7 +63,9 @@ export function RoomCheckFlow() {
   }
 
   function reset() {
-    setPhase("pick");
+    setPhase("area");
+    setArea(null);
+    setCustomArea("");
     setLevel(null);
     setStepIndex(0);
     setPhotos([]);
@@ -72,15 +83,16 @@ export function RoomCheckFlow() {
   }
 
   async function submit(finalPhotos: string[]) {
-    if (!level) return;
+    if (!level || !area) return;
     setPhase("submitting");
     setError(null);
     try {
-      const res = await fetch("/api/room-check", {
+      const res = await fetch("/api/clean-check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           level,
+          area,
           photos: finalPhotos,
           idempotencyKey: crypto.randomUUID(),
         }),
@@ -91,7 +103,7 @@ export function RoomCheckFlow() {
         setPhase("wizard");
         return;
       }
-      setResult(data as RoomCheckResult);
+      setResult(data as CleanCheckResult);
       setPhase("result");
     } catch {
       setError("Network error — please try again.");
@@ -99,16 +111,45 @@ export function RoomCheckFlow() {
     }
   }
 
+  // ---------- AREA PICKER ----------
+  if (phase === "area") {
+    return (
+      <div>
+        <h1 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
+          Clean Check
+        </h1>
+        <p className="mt-2 text-cream/60">What area are you cleaning?</p>
+        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {CLEAN_CHECK_AREAS.map((a) => (
+            <Card key={a.id} className="cursor-pointer text-center" onClick={() => pickArea(a.id, a.label)}>
+              <p className="font-display text-sm uppercase tracking-tight text-cream">{a.label}</p>
+            </Card>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Custom area (only needed for 'Other')"
+          value={customArea}
+          onChange={(e) => setCustomArea(e.target.value)}
+          className="mt-4 h-11 w-full rounded-lg border border-cream/15 bg-ink px-3 text-cream placeholder:text-cream/40 focus:border-gold/60 focus:outline-none"
+        />
+      </div>
+    );
+  }
+
   // ---------- LEVEL PICKER ----------
   if (phase === "pick") {
     return (
       <div>
-        <h1 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
-          Room Check
+        <button onClick={reset} className="text-sm text-cream/50 hover:text-cream">
+          ← Change area
+        </button>
+        <h1 className="mt-4 font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
+          Clean Check — {area}
         </h1>
         <p className="mt-2 text-cream/60">Pick a verification level to get started.</p>
         <div className="mt-8 grid gap-5 sm:grid-cols-1">
-          {ROOM_CHECK_LEVELS.map((l) => (
+          {CLEAN_CHECK_LEVELS.map((l) => (
             <Card key={l.id} className="cursor-pointer" onClick={() => startLevel(l.id)}>
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -135,18 +176,18 @@ export function RoomCheckFlow() {
   }
 
   // ---------- WIZARD ----------
-  if ((phase === "wizard" || phase === "submitting") && level && config) {
-    const step = config.steps[stepIndex];
+  if ((phase === "wizard" || phase === "submitting") && level && config && area) {
+    const step = steps[stepIndex];
     const photo = photos[stepIndex];
-    const isLastStep = stepIndex === config.steps.length - 1;
+    const isLastStep = stepIndex === steps.length - 1;
 
     return (
       <div>
-        <button onClick={reset} className="text-sm text-cream/50 hover:text-cream">
+        <button onClick={() => setPhase("pick")} className="text-sm text-cream/50 hover:text-cream">
           ← Change level
         </button>
         <div className="mt-4 flex items-center gap-2">
-          {config.steps.map((_, i) => (
+          {steps.map((_, i) => (
             <div
               key={i}
               className={`h-1.5 flex-1 rounded-full ${
@@ -156,7 +197,7 @@ export function RoomCheckFlow() {
           ))}
         </div>
         <p className="mt-2 text-xs uppercase tracking-[0.2em] text-cream/50">
-          Step {stepIndex + 1} of {config.steps.length}
+          Step {stepIndex + 1} of {steps.length}
         </p>
 
         <Card className="mt-4">
@@ -259,7 +300,7 @@ export function RoomCheckFlow() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Button onClick={reset}>Run another check</Button>
             <Link
-              href="/tools/room-check/history"
+              href="/tools/clean-check/history"
               className="inline-flex h-11 items-center justify-center rounded-full border border-gold/40 px-5 text-sm font-semibold text-cream hover:border-gold hover:bg-gold/10"
             >
               View history

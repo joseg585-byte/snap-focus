@@ -1,24 +1,22 @@
-// POST /api/tutor/grade — grades one attempt at one question of an already-
-// generated lesson. No credit spend here; the lesson's 12 credits already
-// cover unlimited grading up to the 3-attempt cap enforced below.
+// POST /api/tutor/grade — grades all 5 Study Quiz answers in one shot and
+// returns pass/fail. No credit spend here; the session's 8 credits already
+// cover this.
 import { NextResponse } from "next/server";
 import { requireAuthedSupabase } from "../../_lib/guard";
-import { gradeTutorAnswer, type TutorQuestion } from "@/lib/ai";
+import { gradeStudyQuiz, type StudyQuizQuestion } from "@/lib/ai";
 
-const MAX_ATTEMPTS = 3;
+const PASS_THRESHOLD = 4;
 
 interface GradeRequestBody {
-  lesson_id?: string;
-  question_index?: number;
-  work_shown?: string;
-  answer?: string;
+  session_id?: string;
+  answers?: string[];
 }
 
 export async function POST(req: Request) {
   const body: GradeRequestBody = await req.json().catch(() => ({}));
-  const { lesson_id, question_index, work_shown, answer } = body;
+  const { session_id, answers } = body;
 
-  if (!lesson_id || question_index === undefined || !answer) {
+  if (!session_id || !Array.isArray(answers) || answers.length === 0) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
 
@@ -26,67 +24,50 @@ export async function POST(req: Request) {
   if (authed instanceof NextResponse) return authed;
   const { supabase, userId } = authed;
 
-  const { data: lesson } = await supabase
+  const { data: session } = await supabase
     .from("lesson_plans")
-    .select("id, questions")
-    .eq("id", lesson_id)
+    .select("id, questions, metadata")
+    .eq("id", session_id)
     .eq("user_id", userId)
-    .eq("action", "standard_tutor")
+    .eq("action", "study_quiz")
     .single();
 
-  if (!lesson) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!session) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const questions = (lesson.questions ?? []) as TutorQuestion[];
-  const question = questions[question_index];
-  if (!question) {
-    return NextResponse.json({ error: "invalid_question_index" }, { status: 400 });
+  const questions = (session.questions ?? []) as StudyQuizQuestion[];
+  if (questions.length === 0) {
+    return NextResponse.json({ error: "quiz_not_generated" }, { status: 400 });
   }
 
-  const { count: priorAttempts } = await supabase
-    .from("lesson_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("lesson_id", lesson_id)
-    .eq("question_index", question_index);
-
-  const attemptNumber = (priorAttempts ?? 0) + 1;
-
-  if (attemptNumber > MAX_ATTEMPTS) {
-    return NextResponse.json({
-      ok: true,
-      verdict: "blocked",
-      feedback: "You've used all 3 tries for this question — let's get a parent to help.",
-      attempts_remaining: 0,
-      escalate_to_parent: true,
-    });
-  }
-
-  const grade = await gradeTutorAnswer({
-    question: question.prompt,
-    correctAnswer: question.correct_answer,
-    solutionPath: question.solution_path,
-    workShown: work_shown ?? "",
-    answer,
+  const metadata = (session.metadata ?? {}) as { subject?: string };
+  const grade = await gradeStudyQuiz({
+    subject: metadata.subject ?? "General studies",
+    questions,
+    answers,
   });
 
-  const attemptsRemaining = Math.max(0, MAX_ATTEMPTS - attemptNumber);
-  const escalateToParent = !grade.correct && (attemptNumber >= 2 || attemptsRemaining === 0);
+  await supabase.from("lesson_attempts").insert(
+    questions.map((q, i) => ({
+      lesson_id: session_id,
+      user_id: userId,
+      question_index: i,
+      attempt_number: 1,
+      answer: answers[i] ?? null,
+      ai_grade_result: { correct: grade.results[i]?.correct ?? false, model: grade.model },
+      feedback: grade.results[i]?.feedback ?? null,
+    }))
+  );
 
-  await supabase.from("lesson_attempts").insert({
-    lesson_id,
-    user_id: userId,
-    question_index,
-    attempt_number: attemptNumber,
-    work_shown: work_shown ?? null,
-    answer,
-    ai_grade_result: { correct: grade.correct, model: grade.model },
-    feedback: grade.feedback,
-  });
+  const score = grade.results.filter((r) => r.correct).length;
+  const pass = score >= PASS_THRESHOLD;
+  const missedTopics = questions.filter((_, i) => !grade.results[i]?.correct).map((q) => q.topic_tag);
 
   return NextResponse.json({
     ok: true,
-    verdict: grade.correct ? "correct" : "incorrect",
-    feedback: grade.feedback,
-    attempts_remaining: attemptsRemaining,
-    escalate_to_parent: escalateToParent,
+    score,
+    total: questions.length,
+    pass,
+    results: grade.results,
+    missedTopics,
   });
 }

@@ -4,9 +4,9 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
 const TOOLS = [
-  { href: "/tools/room-check", label: "Room Check", emoji: "🏠" },
-  { href: "/tools/tutor", label: "Standard Tutor", emoji: "📚" },
-  { href: "/tools/focus", label: "Master Focus Coach", emoji: "🧠" },
+  { href: "/tools/clean-check", label: "Clean Check", emoji: "🧹" },
+  { href: "/tools/homework-check", label: "Homework Check", emoji: "📓" },
+  { href: "/tools/study-quiz", label: "Study Quiz", emoji: "⏱️" },
 ];
 
 export function ToolsMenu() {

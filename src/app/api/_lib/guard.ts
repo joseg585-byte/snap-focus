@@ -75,7 +75,7 @@ export async function guardAndSpend(
           cost: costOverride ?? CREDIT_COSTS[action],
           suggestion:
             action === "master_coach"
-              ? "Not enough credits for the Master Coach — try the Standard Tutor (2 credits) or top up."
+              ? "Not enough credits for the Adult Study Coach — try a Clean Check (1 credit) or top up."
               : "Not enough credits — top up to continue.",
         },
         { status: 402 }

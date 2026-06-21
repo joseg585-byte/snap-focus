@@ -1,21 +1,21 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserAndProfile } from "@/lib/supabase/profile";
-import { RoomCheckHistoryList, type RoomCheckHistoryItem } from "@/components/room-check/history-list";
+import { CleanCheckHistoryList, type CleanCheckHistoryItem } from "@/components/clean-check/history-list";
 
-export default async function RoomCheckHistoryPage() {
+export default async function CleanCheckHistoryPage() {
   const { user } = await getCurrentUserAndProfile();
-  if (!user) redirect("/login?next=/tools/room-check/history");
+  if (!user) redirect("/login?next=/tools/clean-check/history");
 
   const supabase = await createSupabaseServerClient();
   const { data: rows } = await supabase
     .from("room_checks")
-    .select("id, level, overall_pass, ai_feedback, area_results, storage_paths, credits_spent, created_at")
+    .select("id, level, area, overall_pass, ai_feedback, area_results, storage_paths, credits_spent, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const items: RoomCheckHistoryItem[] = await Promise.all(
+  const items: CleanCheckHistoryItem[] = await Promise.all(
     (rows ?? []).map(async (row) => {
       const paths: string[] = row.storage_paths ?? [];
       const signedUrls = await Promise.all(
@@ -29,6 +29,7 @@ export default async function RoomCheckHistoryPage() {
       return {
         id: row.id,
         level: row.level,
+        area: row.area ?? "bedroom",
         overallPass: row.overall_pass,
         summary: row.ai_feedback,
         areas: (row.area_results as { title: string; pass: boolean; note: string }[]) ?? [],
@@ -42,9 +43,9 @@ export default async function RoomCheckHistoryPage() {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
       <h1 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
-        Room Check History
+        Clean Check History
       </h1>
-      <RoomCheckHistoryList items={items} />
+      <CleanCheckHistoryList items={items} />
     </main>
   );
 }

@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserAndProfile } from "@/lib/supabase/profile";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AI_FEATURES, ROOM_CHECK_LEVELS } from "@/lib/config";
+import { KID_TOOLS } from "@/lib/config";
 
 interface ActivityItem {
   key: string;
@@ -17,10 +17,16 @@ interface ActivityItem {
 async function getRecentActivity(userId: string): Promise<ActivityItem[]> {
   const supabase = await createSupabaseServerClient();
 
-  const [roomChecks, lessonPlans, focusSessions] = await Promise.all([
+  const [cleanChecks, homeworkChecks, studyQuizzes] = await Promise.all([
     supabase
       .from("room_checks")
-      .select("id, level, overall_pass, credits_spent, created_at")
+      .select("id, level, area, overall_pass, credits_spent, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("homework_checks")
+      .select("id, verdict, credits_spent, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(10),
@@ -28,37 +34,32 @@ async function getRecentActivity(userId: string): Promise<ActivityItem[]> {
       .from("lesson_plans")
       .select("id, title, credits_spent, created_at")
       .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(10),
-    supabase
-      .from("focus_sessions")
-      .select("id, goal, credits_spent, created_at")
-      .eq("user_id", userId)
+      .eq("action", "study_quiz")
       .order("created_at", { ascending: false })
       .limit(10),
   ]);
 
   const items: ActivityItem[] = [
-    ...(roomChecks.data ?? []).map((r) => ({
-      key: `room_check:${r.id}`,
-      label: "Room Check",
-      detail: `${r.level} · ${r.overall_pass === null ? "pending" : r.overall_pass ? "passed" : "needs work"}`,
+    ...(cleanChecks.data ?? []).map((r) => ({
+      key: `clean_check:${r.id}`,
+      label: "Clean Check",
+      detail: `${r.area} · ${r.level} · ${r.overall_pass === null ? "pending" : r.overall_pass ? "passed" : "needs work"}`,
       credits: r.credits_spent,
       createdAt: r.created_at,
     })),
-    ...(lessonPlans.data ?? []).map((l) => ({
-      key: `tutor:${l.id}`,
-      label: "Standard Tutor",
-      detail: l.title ?? "Lesson plan",
-      credits: l.credits_spent,
-      createdAt: l.created_at,
+    ...(homeworkChecks.data ?? []).map((h) => ({
+      key: `homework_check:${h.id}`,
+      label: "Homework Check",
+      detail: h.verdict === "pass" ? "done" : h.verdict === "fail" ? "needs work" : "not homework",
+      credits: h.credits_spent,
+      createdAt: h.created_at,
     })),
-    ...(focusSessions.data ?? []).map((f) => ({
-      key: `focus:${f.id}`,
-      label: "Master Focus Coach",
-      detail: f.goal,
-      credits: f.credits_spent,
-      createdAt: f.created_at,
+    ...(studyQuizzes.data ?? []).map((s) => ({
+      key: `study_quiz:${s.id}`,
+      label: "Study Quiz",
+      detail: s.title ?? "Study session",
+      credits: s.credits_spent,
+      createdAt: s.created_at,
     })),
   ];
 
@@ -66,30 +67,6 @@ async function getRecentActivity(userId: string): Promise<ActivityItem[]> {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 10);
 }
-
-const TOOL_CARDS = [
-  {
-    href: "/tools/room-check",
-    emoji: "🏠",
-    name: "Room Check",
-    blurb: "Verify your room is clean",
-    cost: `from ${Math.min(...ROOM_CHECK_LEVELS.map((l) => l.cost))} credit`,
-  },
-  {
-    href: "/tools/tutor",
-    emoji: "📚",
-    name: "Standard Tutor",
-    blurb: "Generate a lesson plan or quiz",
-    cost: `${AI_FEATURES.find((f) => f.action === "standard_tutor")?.cost} credits`,
-  },
-  {
-    href: "/tools/focus",
-    emoji: "🧠",
-    name: "Master Focus Coach",
-    blurb: "AI-coached focus session",
-    cost: `${AI_FEATURES.find((f) => f.action === "master_coach")?.cost} credits`,
-  },
-];
 
 export default async function DashboardPage() {
   const { user, profile } = await getCurrentUserAndProfile();
@@ -126,7 +103,7 @@ export default async function DashboardPage() {
 
       {/* Tool cards */}
       <div className="mt-8 grid gap-5 sm:grid-cols-3">
-        {TOOL_CARDS.map((tool) => (
+        {KID_TOOLS.map((tool) => (
           <Link key={tool.href} href={tool.href} className="block">
             <Card className="h-full transition-transform hover:-translate-y-0.5">
               <CardHeader>
@@ -134,7 +111,7 @@ export default async function DashboardPage() {
                   <CardTitle className="text-xl">
                     {tool.emoji} {tool.name}
                   </CardTitle>
-                  <Badge>{tool.cost}</Badge>
+                  <Badge>{typeof tool.cost === "number" ? `${tool.cost} credits` : tool.cost}</Badge>
                 </div>
               </CardHeader>
               <CardContent>{tool.blurb}</CardContent>
@@ -151,7 +128,7 @@ export default async function DashboardPage() {
         <div className="mt-4 overflow-hidden rounded-2xl border border-cream/10 bg-ink-soft/60 backdrop-blur">
           {activity.length === 0 ? (
             <p className="p-6 text-sm text-cream/60">
-              Nothing yet — run a Room Check, generate a lesson, or start a focus session.
+              Nothing yet — run a Clean Check, a Homework Check, or a Study Quiz.
             </p>
           ) : (
             <ul className="divide-y divide-cream/10">
@@ -176,6 +153,12 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      <p className="mt-10 text-center text-xs text-cream/30">
+        <Link href="/tools/focus" className="hover:text-cream/60">
+          Adult Study Coach (beta)
+        </Link>
+      </p>
     </main>
   );
 }
