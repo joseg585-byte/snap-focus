@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AI_FEATURES, TIERS, TOPUP_PACKS, dollars } from "@/lib/config";
+import { KID_TOOLS, TIERS, TOPUP_PACKS, dollars } from "@/lib/config";
 
 export default function Home() {
   return (
@@ -14,11 +15,12 @@ export default function Home() {
             Snap<span className="text-gold">Focus</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl font-serif text-2xl leading-snug text-cream/80 sm:text-3xl">
-            Focus, verified. AI room checks, custom lesson plans, and a flagship
-            focus coach — one app for parents and individuals.
+            AI-verified accountability for kids.
+            <br />
+            No more &ldquo;I did it&rdquo; lies.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button size="lg">Start for {dollars(TIERS[0].priceCents)}/mo</Button>
+            <Button size="lg">Get started — your kids will hate it</Button>
             <Button size="lg" variant="outline">
               See how it works
             </Button>
@@ -32,17 +34,17 @@ export default function Home() {
       {/* ---------- FEATURES ---------- */}
       <section className="mx-auto w-full max-w-5xl px-6 py-16">
         <h2 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
-          Three tools. One credit balance.
+          Three tools. Zero excuses.
         </h2>
         <div className="mt-8 grid gap-5 sm:grid-cols-3">
-          {AI_FEATURES.map((f) => (
+          {KID_TOOLS.map((f) => (
             <Card key={f.action}>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>{f.name}</CardTitle>
-                  <Badge>
-                    {f.cost} {f.cost === 1 ? "credit" : "credits"}
-                  </Badge>
+                  <CardTitle>
+                    {f.emoji} {f.name}
+                  </CardTitle>
+                  <Badge>{typeof f.cost === "number" ? `${f.cost} credits` : f.cost}</Badge>
                 </div>
               </CardHeader>
               <CardContent>{f.blurb}</CardContent>
@@ -133,6 +135,9 @@ export default function Home() {
           <span className="font-display text-lg uppercase tracking-tight text-cream">
             Snap<span className="text-gold">Focus</span>
           </span>
+          <Link href="/tools/focus" className="text-cream/40 hover:text-cream/70">
+            Adult Study Coach (beta)
+          </Link>
           <span>© {new Date().getFullYear()} SeJo Labs. Built to go native.</span>
         </div>
       </footer>

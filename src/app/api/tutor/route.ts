@@ -1,72 +1,44 @@
-// POST /api/tutor — generates a graded practice lesson (3-7 questions, each
-// with its own correct answer + solution path). Costs 12 credits, charged on
-// generation — that covers all grading + retries for this lesson, so
-// /api/tutor/grade never spends credits itself.
+// POST /api/tutor — starts a Study Quiz session. Charges the flat 8 credits
+// up front (covers the timer + the quiz generated when it ends); the timer
+// itself runs client-side, so all this does is reserve a lesson_plans row.
 import { NextResponse } from "next/server";
 import { guardAndSpend } from "../_lib/guard";
-import { generateTutorLesson } from "@/lib/ai";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CREDIT_COSTS } from "@/lib/config";
 
-interface TutorRequestBody {
+interface StudyQuizStartBody {
   subject?: string;
-  gradeLevel?: string;
   topic?: string;
-  goal?: "learn_concept" | "practice_problems" | "test_prep" | "quick_reference";
-  notes?: string;
+  length_minutes?: number;
   idempotencyKey?: string;
 }
 
-const GOAL_LABEL: Record<string, string> = {
-  learn_concept: "Learn the concept",
-  practice_problems: "Practice problems",
-  test_prep: "Test prep",
-  quick_reference: "Quick reference",
-};
+const VALID_LENGTHS = [15, 25, 45];
 
 export async function POST(req: Request) {
-  const body: TutorRequestBody = await req.json().catch(() => ({}));
-  const { subject, gradeLevel, topic, goal, notes, idempotencyKey } = body;
+  const body: StudyQuizStartBody = await req.json().catch(() => ({}));
+  const { subject, topic, length_minutes, idempotencyKey } = body;
 
-  if (!subject || !gradeLevel || !topic || !goal) {
+  if (!subject || !length_minutes || !VALID_LENGTHS.includes(length_minutes)) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
 
-  const guard = await guardAndSpend("standard_tutor", idempotencyKey);
+  const guard = await guardAndSpend("study_quiz", idempotencyKey);
   if (guard instanceof NextResponse) return guard;
 
-  const goalLabel = GOAL_LABEL[goal] ?? goal;
-  const prompt = [
-    `Subject: ${subject}`,
-    `Grade level: ${gradeLevel}`,
-    `Topic: ${topic}`,
-    `Goal: ${goalLabel}`,
-    notes ? `Special needs / notes: ${notes}` : null,
-    "",
-    "Generate the practice question set described in the system prompt.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const result = await generateTutorLesson(prompt);
-
-  const title = `${topic} — ${subject} (${gradeLevel})`;
-  const content = result.questions
-    .map((q, i) => `${i + 1}. ${q.prompt}`)
-    .join("\n\n");
+  const title = topic ? `${topic} — ${subject}` : subject;
 
   const supabase = await createSupabaseServerClient();
   const { data: saved, error: insertError } = await supabase
     .from("lesson_plans")
     .insert({
       user_id: guard.userId,
-      action: "standard_tutor",
+      action: "study_quiz",
       title,
-      content,
-      questions: result.questions,
-      model_used: result.model,
-      credits_spent: CREDIT_COSTS.standard_tutor,
-      metadata: { subject, gradeLevel, goal, notes: notes ?? null },
+      content: `Study session: ${title} (${length_minutes} min)`,
+      questions: [],
+      credits_spent: CREDIT_COSTS.study_quiz,
+      metadata: { subject, topic: topic ?? null, lengthMinutes: length_minutes },
     })
     .select("id")
     .single();
@@ -81,9 +53,9 @@ export async function POST(req: Request) {
   return NextResponse.json({
     ok: true,
     balance: guard.balance,
-    model: result.model,
-    lessonId: saved.id,
-    title,
-    questions: result.questions.map((q) => ({ prompt: q.prompt })),
+    sessionId: saved.id,
+    subject,
+    topic: topic ?? null,
+    lengthMinutes: length_minutes,
   });
 }

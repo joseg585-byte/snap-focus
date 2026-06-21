@@ -6,86 +6,128 @@
 // =============================================================
 import { TOOL_CREDIT_COSTS } from "@/lib/credits/costs";
 
-export type AiAction = "room_check" | "standard_tutor" | "master_coach";
+export type AiAction = "clean_check" | "homework_check" | "study_quiz" | "master_coach";
 export type TierId = "starter" | "pro" | "ultimate";
 export type TopupId = "quick_fix" | "value_pack" | "power_pack";
-export type RoomCheckLevel = "quick" | "standard" | "deep";
+export type CleanCheckLevel = "quick" | "standard" | "deep";
 
-/** Default credit cost per AI action (cheapest variant for room_check, the
- * "coached" rate for master_coach). Per-mode overrides — room check levels,
- * Just Focus — live in ROOM_CHECK_LEVELS / TOOL_CREDIT_COSTS and are passed
+/** Default credit cost per AI action (cheapest variant for clean_check, the
+ * "coached" rate for master_coach). Per-mode overrides — clean check levels,
+ * Just Focus — live in CLEAN_CHECK_LEVELS / TOOL_CREDIT_COSTS and are passed
  * as `p_cost_override`. Authoritative copy lives in `spend_credits()`. */
 export const CREDIT_COSTS: Record<AiAction, number> = {
-  room_check: TOOL_CREDIT_COSTS.room_check_quick,
-  standard_tutor: TOOL_CREDIT_COSTS.standard_tutor_interactive,
+  clean_check: TOOL_CREDIT_COSTS.clean_check_quick,
+  homework_check: TOOL_CREDIT_COSTS.homework_check,
+  study_quiz: TOOL_CREDIT_COSTS.study_quiz,
   master_coach: TOOL_CREDIT_COSTS.master_coach_coached,
 };
 
 /** Master Focus Coach "Just Focus" mode — Pomodoro timer only, no AI teaching. */
 export const MASTER_COACH_JUST_FOCUS_COST = TOOL_CREDIT_COSTS.master_coach_just_focus;
 
-export interface RoomCheckLevelConfig {
-  id: RoomCheckLevel;
+export type CleanCheckArea =
+  | "bedroom"
+  | "closet"
+  | "bathroom"
+  | "desk"
+  | "kitchen"
+  | "playroom"
+  | "backyard"
+  | "other";
+
+export const CLEAN_CHECK_AREAS: { id: CleanCheckArea; label: string }[] = [
+  { id: "bedroom", label: "Bedroom" },
+  { id: "closet", label: "Closet" },
+  { id: "bathroom", label: "Bathroom" },
+  { id: "desk", label: "Desk" },
+  { id: "kitchen", label: "Kitchen" },
+  { id: "playroom", label: "Playroom" },
+  { id: "backyard", label: "Backyard" },
+  { id: "other", label: "Other" },
+];
+
+export interface CleanCheckLevelConfig {
+  id: CleanCheckLevel;
   name: string;
   cost: number;
   emoji: string;
   tagline: string;
   description: string;
   photoCount: number;
-  steps: { title: string; prompt: string }[];
+  /** Step titles + area-aware prompt templates, filled in once the area is known. */
+  stepTemplates: { title: string; promptTemplate: (area: string) => string }[];
 }
 
 /** Per-level cost overrides `spend_credits(p_cost_override=...)`. */
-export const ROOM_CHECK_LEVELS: RoomCheckLevelConfig[] = [
+export const CLEAN_CHECK_LEVELS: CleanCheckLevelConfig[] = [
   {
     id: "quick",
     name: "Quick Check",
-    cost: TOOL_CREDIT_COSTS.room_check_quick,
+    cost: TOOL_CREDIT_COSTS.clean_check_quick,
     emoji: "🟢",
     tagline: "Snap one photo. AI confirms if it looks clean.",
     description: "One photo, one verdict. The fastest way to get the all-clear.",
     photoCount: 1,
-    steps: [{ title: "Room photo", prompt: "Take one photo of the room." }],
+    stepTemplates: [{ title: "Photo", promptTemplate: (area) => `Take one photo of your ${area}.` }],
   },
   {
     id: "standard",
     name: "Standard Check",
-    cost: TOOL_CREDIT_COSTS.room_check_standard,
+    cost: TOOL_CREDIT_COSTS.clean_check_standard,
     emoji: "🟡",
     tagline: "Take 3 guided photos. AI verifies each angle.",
-    description: "Three angles, checked individually and as a whole room.",
+    description: "Three angles, checked individually and as a whole.",
     photoCount: 3,
-    steps: [
-      { title: "Full room view", prompt: "Full room view from the doorway." },
-      { title: "Desk & surfaces", prompt: "Desk, dresser, and surfaces." },
-      { title: "Closet & storage", prompt: "Closet and storage areas." },
+    stepTemplates: [
+      { title: "Full view", promptTemplate: (area) => `Full view of your ${area}.` },
+      { title: "Surfaces", promptTemplate: (area) => `Surfaces and any flat spaces in the ${area}.` },
+      {
+        title: "Storage",
+        promptTemplate: (area) => `Storage — closet, cabinet, shelves, or drawers in the ${area}.`,
+      },
     ],
   },
   {
     id: "deep",
     name: "Deep Inspection",
-    cost: TOOL_CREDIT_COSTS.room_check_deep,
+    cost: TOOL_CREDIT_COSTS.clean_check_deep,
     emoji: "🔴",
-    tagline:
-      "Guided multi-step inspection. AI checks under the bed, closet, behind furniture. Strictest verification.",
+    tagline: "Guided multi-step inspection. AI checks the spots that usually get skipped.",
     description: "Four angles including the spots that usually get skipped.",
     photoCount: 4,
-    steps: [
-      { title: "Full room view", prompt: "Full room view from the doorway." },
-      { title: "Under the bed", prompt: "Get low — show under the bed." },
-      { title: "Inside the closet", prompt: "Open the closet — show inside." },
+    stepTemplates: [
+      { title: "Full view", promptTemplate: (area) => `Full view of your ${area}.` },
       {
-        title: "Trash & behind furniture",
-        prompt: "Trash can, plus behind furniture or other commonly-skipped spots.",
+        title: "Under & behind",
+        promptTemplate: (area) => `Get low — show under furniture or behind big items in the ${area}.`,
+      },
+      {
+        title: "Storage",
+        promptTemplate: (area) => `Storage — closet, cabinet, shelves, or drawers in the ${area}.`,
+      },
+      {
+        title: "Trash & hard-to-reach spots",
+        promptTemplate: (area) => `Trash can, plus any other commonly-skipped spot in the ${area}.`,
       },
     ],
   },
 ];
 
-export function roomCheckLevelConfig(level: RoomCheckLevel): RoomCheckLevelConfig {
-  const cfg = ROOM_CHECK_LEVELS.find((l) => l.id === level);
-  if (!cfg) throw new Error(`Unknown room check level: ${level}`);
+export function cleanCheckLevelConfig(level: CleanCheckLevel): CleanCheckLevelConfig {
+  const cfg = CLEAN_CHECK_LEVELS.find((l) => l.id === level);
+  if (!cfg) throw new Error(`Unknown clean check level: ${level}`);
   return cfg;
+}
+
+/** Resolve a level's steps into concrete titles + prompts for the given area. */
+export function cleanCheckSteps(
+  level: CleanCheckLevel,
+  areaLabel: string
+): { title: string; prompt: string }[] {
+  return cleanCheckLevelConfig(level).stepTemplates.map((t) => ({
+    title: t.title,
+    prompt: t.promptTemplate(areaLabel),
+  }));
 }
 
 export interface Tier {
@@ -112,10 +154,10 @@ export const TIERS: Tier[] = [
     pdfExport: false,
     brandedExport: false,
     textRetentionDays: 30,
-    blurb: "Get focused. Room Checks and the everyday Tutor.",
+    blurb: "All 3 kid tools — Clean Check, Homework Check, Study Quiz.",
     features: [
       "200 credits / month",
-      "Room Check + Standard Tutor",
+      "Clean Check + Homework Check + Study Quiz",
       "Fast/budget AI models",
       "History kept 30 days",
     ],
@@ -147,10 +189,10 @@ export const TIERS: Tier[] = [
     pdfExport: true,
     brandedExport: true,
     textRetentionDays: null,
-    blurb: "Unlock the Master Focus Coach and keep everything.",
+    blurb: "Unlock the adult Study Coach and keep everything.",
     features: [
       "1,100 credits / month",
-      "Master Focus Coach (flagship AI)",
+      "Adult Study Coach (flagship AI, beta)",
       "Custom branded exports",
       "History kept forever",
     ],
@@ -174,29 +216,51 @@ export const TOPUP_PACKS: TopupPack[] = [
   { id: "power_pack", name: "Power Pack", priceCents: 1499, credits: 600, blurb: "Stock up and never run dry." },
 ];
 
-export const AI_FEATURES = [
+export interface KidTool {
+  action: AiAction;
+  name: string;
+  href: string;
+  emoji: string;
+  cost: number | string;
+  blurb: string;
+}
+
+export const KID_TOOLS: KidTool[] = [
   {
-    action: "room_check" as AiAction,
-    name: "Room Check",
-    cost: CREDIT_COSTS.room_check,
-    blurb:
-      "Snap a photo and let computer vision verify the room is actually clean — no more arguing about it.",
+    action: "clean_check",
+    name: "Clean Check",
+    href: "/tools/clean-check",
+    emoji: "🧹",
+    cost: `from ${Math.min(...CLEAN_CHECK_LEVELS.map((l) => l.cost))} credit`,
+    blurb: "Snap a photo of any area and AI verifies it's actually clean — no more arguing about it.",
   },
   {
-    action: "standard_tutor" as AiAction,
-    name: "Standard Tutor",
-    cost: CREDIT_COSTS.standard_tutor,
-    blurb:
-      "Generate customized lesson plans and study guides tailored to your kid, subject, and grade level.",
+    action: "homework_check",
+    name: "Homework Check",
+    href: "/tools/homework-check",
+    emoji: "📓",
+    cost: CREDIT_COSTS.homework_check,
+    blurb: "Snap a photo of finished homework — AI confirms it's complete and spot-checks the answers.",
   },
   {
-    action: "master_coach" as AiAction,
-    name: "Master Focus Coach",
-    cost: CREDIT_COSTS.master_coach,
-    blurb:
-      "Our flagship model builds a coached study plan for any subject and actually teaches you, live, through the session.",
+    action: "study_quiz",
+    name: "Study Quiz",
+    href: "/tools/study-quiz",
+    emoji: "⏱️",
+    cost: CREDIT_COSTS.study_quiz,
+    blurb: "Pick a subject, study through a Pomodoro timer, then pass an AI quiz to prove it stuck.",
   },
 ];
+
+/** Demoted adult tool — not on the main dashboard/landing, linked from the footer only. */
+export const MASTER_COACH_FEATURE = {
+  action: "master_coach" as AiAction,
+  name: "Adult Study Coach",
+  href: "/tools/focus",
+  cost: CREDIT_COSTS.master_coach,
+  blurb:
+    "Our flagship model builds a coached study plan for any subject and actually teaches you, live, through the session.",
+};
 
 export const dollars = (cents: number): string =>
   `$${(cents / 100).toFixed(2).replace(/\.00$/, "")}`;

@@ -4,49 +4,45 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserAndProfile } from "@/lib/supabase/profile";
 import { Card } from "@/components/ui/card";
 
-interface LessonPlanRow {
+interface StudyQuizSessionRow {
   id: string;
   title: string | null;
   content: string;
   created_at: string;
-  metadata: { subject?: string; gradeLevel?: string; goal?: string } | null;
+  metadata: { subject?: string; topic?: string } | null;
 }
 
-export default async function TutorLibraryPage({
+export default async function StudyQuizLibraryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ subject?: string; grade?: string }>;
+  searchParams: Promise<{ subject?: string }>;
 }) {
   const { user } = await getCurrentUserAndProfile();
-  if (!user) redirect("/login?next=/tools/tutor/library");
+  if (!user) redirect("/login?next=/tools/study-quiz/library");
 
-  const { subject, grade } = await searchParams;
+  const { subject } = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("lesson_plans")
     .select("id, title, content, created_at, metadata")
     .eq("user_id", user.id)
-    .eq("action", "standard_tutor")
+    .eq("action", "study_quiz")
     .order("created_at", { ascending: false });
 
   if (subject) query = query.eq("metadata->>subject", subject);
-  if (grade) query = query.eq("metadata->>gradeLevel", grade);
 
   const { data: rows } = await query;
-  const items = (rows ?? []) as LessonPlanRow[];
+  const items = (rows ?? []) as StudyQuizSessionRow[];
 
   const subjects = Array.from(
     new Set((rows ?? []).map((r) => r.metadata?.subject).filter(Boolean))
-  ) as string[];
-  const grades = Array.from(
-    new Set((rows ?? []).map((r) => r.metadata?.gradeLevel).filter(Boolean))
   ) as string[];
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
       <h1 className="font-display text-3xl uppercase tracking-tight text-cream sm:text-4xl">
-        Tutor Library
+        Study Quiz History
       </h1>
 
       <form className="mt-6 flex flex-wrap gap-3" method="get">
@@ -62,18 +58,6 @@ export default async function TutorLibraryPage({
             </option>
           ))}
         </select>
-        <select
-          name="grade"
-          defaultValue={grade ?? ""}
-          className="h-10 rounded-lg border border-cream/15 bg-ink px-3 text-sm text-cream"
-        >
-          <option value="">All grades</option>
-          {grades.map((g) => (
-            <option key={g} value={g}>
-              Grade {g}
-            </option>
-          ))}
-        </select>
         <button
           type="submit"
           className="h-10 rounded-lg border border-gold/40 px-4 text-sm text-gold hover:bg-gold/10"
@@ -84,7 +68,7 @@ export default async function TutorLibraryPage({
 
       <div className="mt-6 space-y-3">
         {items.length === 0 ? (
-          <p className="text-cream/60">No saved lessons yet.</p>
+          <p className="text-cream/60">No study sessions yet.</p>
         ) : (
           items.map((item) => (
             <Card key={item.id}>
@@ -104,8 +88,8 @@ export default async function TutorLibraryPage({
         )}
       </div>
 
-      <Link href="/tools/tutor" className="mt-8 inline-block text-sm text-gold underline">
-        ← New lesson
+      <Link href="/tools/study-quiz" className="mt-8 inline-block text-sm text-gold underline">
+        ← New study session
       </Link>
     </main>
   );
