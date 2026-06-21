@@ -16,9 +16,9 @@ const cormorant = Cormorant({
 });
 
 export const metadata: Metadata = {
-  title: "SnapFocus — Focus, verified.",
+  title: "SnapFocus — AI-verified accountability for kids.",
   description:
-    "SnapFocus by SeJo Labs: AI Room Checks, customized lesson plans, and a Master Focus Coach — all in one app for parents and individuals.",
+    "SnapFocus by SeJo Labs: AI-verified Clean Check, Homework Check, and Study Quiz — no more \"I did it\" lies.",
 };
 
 export default function RootLayout({
